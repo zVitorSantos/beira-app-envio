@@ -75,7 +75,7 @@ def extrair_dados(pdf_path):
 
     general_info_df = pd.DataFrame([general_info])
 
-    file_name = 'dados.xlsx'
+    file_name = 'coleta.xlsx'
     writer = pd.ExcelWriter(file_name, engine='xlsxwriter')
 
     general_info_df.to_excel(writer, sheet_name='Infos', index=False)

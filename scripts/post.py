@@ -5,13 +5,27 @@ import sys
 import json
 import tkinter as tk
 from tkinter import ttk
+import json
 
-sys.path.append(r'C:\Users\Usuario\Desktop\Bling API')
-from tokens import ACCESS_TOKEN
+# Carregando dados consolidados do arquivo JSON
+with open("config.json", "r") as file:
+    consolidated_data = json.load(file)
+
+# Recuperando a empresa selecionada do arquivo temporário
+try:
+    with open("sel.json", "r") as file:
+        selected_company_data = json.load(file)
+    selected_company = selected_company_data.get("sel", None)
+except FileNotFoundError:
+    print("Arquivo de empresa selecionada não encontrado.")
+    exit(1)
+
+# Recuperando o ACCESS_TOKEN com base na empresa selecionada
+ACCESS_TOKEN = consolidated_data.get(selected_company, {}).get("tokens", {}).get("ACCESS_TOKEN", None)
 
 # Caminhos para os arquivos
-file_path_dados_coletados = r"C:\Users\Usuario\Desktop\Bling API\dados.xlsx"
-file_path_tabela_xlsx = r"C:\Users\Usuario\Desktop\Bling API\tabela.xlsx"
+file_path_dados_coletados = r"C:\Users\Usuario\Desktop\Bling API\data\coleta.xlsx"
+file_path_tabela_xlsx = r"C:\Users\Usuario\Desktop\Bling API\data\tabela.xlsx"
 
 # 1. Carregar os Dados
 dados_coletados_itens_df = pd.read_excel(file_path_dados_coletados, sheet_name='Items')

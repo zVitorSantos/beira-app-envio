@@ -2,18 +2,30 @@ import requests
 import base64
 import json
 import datetime
-import sys
-sys.path.append(r'C:\Users\Usuario\Desktop\Bling API')
-import main
-from config import STATE, CLIENT_ID, CLIENT_SECRET, SCOPES
-from tokens import ACCESS_TOKEN, REFRESH_TOKEN
 from flask import Flask, request, redirect, Response
 
 app = Flask(__name__)
 
-# Credenciais do cliente (client_id e client_secret)
-CLIENT_ID = 'c676d47d13c33a707e1d26f23fa11fcaef5666d2'
-CLIENT_SECRET = '614d505dd5ace5383a74cb2358055370e8f3136d5f0f1655454545ea1482'
+# Carregando dados consolidados do arquivo JSON
+with open("config.json", "r") as file:
+    consolidated_data = json.load(file)
+
+# Recuperando a empresa selecionada do arquivo temporário
+try:
+    with open("sel.json", "r") as file:
+        selected_company_data = json.load(file)
+    selected_company = selected_company_data.get("sel", None)
+except FileNotFoundError:
+    print("Arquivo de empresa selecionada não encontrado.")
+    exit(1)
+
+# Recuperando configurações e tokens com base na empresa selecionada
+STATE = consolidated_data.get(selected_company, {}).get("config", {}).get("STATE", None)
+CLIENT_ID = consolidated_data.get(selected_company, {}).get("config", {}).get("CLIENT_ID", None)
+CLIENT_SECRET = consolidated_data.get(selected_company, {}).get("config", {}).get("CLIENT_SECRET", None)
+SCOPES = consolidated_data.get(selected_company, {}).get("config", {}).get("SCOPES", None)
+ACCESS_TOKEN = consolidated_data.get(selected_company, {}).get("tokens", {}).get("ACCESS_TOKEN", None)
+REFRESH_TOKEN = consolidated_data.get(selected_company, {}).get("tokens", {}).get("REFRESH_TOKEN", None)
 
 # URL da página de autorização do provedor OAuth
 AUTHORIZE_URL = f"https://www.bling.com.br/Api/v3/oauth/authorize?response_type=code&client_id={CLIENT_ID}&state={STATE}&scopes={SCOPES}"
@@ -22,14 +34,14 @@ AUTHORIZE_URL = f"https://www.bling.com.br/Api/v3/oauth/authorize?response_type=
 ACCESS_TOKEN_URL = 'https://www.bling.com.br/Api/v3/oauth/token'
 REFRESH_TOKEN_URL = 'https://www.bling.com.br/Api/v3/oauth/token'
 
-def write_tokens_to_tokens(access_token, refresh_token):
-    with open('tokens.py', 'w') as file:
-        file.write(f'ACCESS_TOKEN = "{access_token}"\n')
-        file.write(f'REFRESH_TOKEN = "{refresh_token}"\n')
-
-def write_expires_in_to_config(expires_in):
-    with open('config.py', 'a') as file:
-        file.write(f"EXPIRES_IN = {expires_in}\n")
+def update_config_json(access_token, refresh_token, expires_in):
+    with open("config.json", "r") as file:
+        config_data = json.load(file)
+    config_data[selected_company]["tokens"]["ACCESS_TOKEN"] = access_token
+    config_data[selected_company]["tokens"]["REFRESH_TOKEN"] = refresh_token
+    config_data[selected_company]["time"] = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    with open("config.json", "w") as file:
+        json.dump(config_data, file, indent=4)
 
 @app.route('/')
 def callback():
@@ -59,13 +71,11 @@ def callback():
             refresh_token = token_data["refresh_token"]
             expires_in = token_data['expires_in']
 
-            write_expires_in_to_config(expires_in)
-            write_tokens_to_tokens(access_token, refresh_token)
+            update_config_json(access_token, refresh_token, expires_in)
 
-            token_capture_time = datetime.now()
-            with open('time.txt', 'w') as file:
-                file.write(str(token_capture_time))
-        
+            with open("flask_done.tmp", "w") as f:
+                f.write("done")
+
         elif response.status_code == 400:
             error_data = response.json()
             error_type = error_data["error"]["type"]

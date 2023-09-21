@@ -6,16 +6,36 @@ import pandas as pd
 from tkinter import filedialog
 import tkinter as tk
 import tkinter.messagebox as messagebox
+from openpyxl import load_workbook
 import sys
-sys.path.append(r'C:\Users\Usuario\Desktop\Bling API')
-from tokens import ACCESS_TOKEN
+import json
+
+# Carregando dados consolidados do arquivo JSON
+with open("config.json", "r") as file:
+    consolidated_data = json.load(file)
+
+# Recuperando a empresa selecionada do arquivo temporário
+try:
+    with open("sel.json", "r") as file:
+        selected_company_data = json.load(file)
+    selected_company = selected_company_data.get("sel", None)
+except FileNotFoundError:
+    print("Arquivo de empresa selecionada não encontrado.")
+    exit(1)
+
+# Recuperando o ACCESS_TOKEN com base na empresa selecionada
+ACCESS_TOKEN = consolidated_data.get(selected_company, {}).get("tokens", {}).get("ACCESS_TOKEN", None)
 
 BASE_URL = 'https://www.bling.com.br/Api/v3'
 
 access_token = ACCESS_TOKEN
-arquivo = 'tabela.xlsx'
 indices_exibidos = None
 tree = None
+
+arquivo = 'data/tabela.xlsx'
+print(f"Selected company: {selected_company}")
+df = pd.read_excel(arquivo, sheet_name=selected_company)
+print(f"Dataframe head: {df.head()}")
 
 def carregar_skus_do_arquivo():
     file_path = filedialog.askopenfilename(filetypes=[("Text files", "*.txt")])
@@ -28,10 +48,30 @@ def carregar_skus_do_arquivo():
     
 def buscar_multiplos_skus():
     skus = carregar_skus_do_arquivo()
-    for sku in skus:
-        codigo_entry.delete(0, tk.END)  # Limpar o campo de entrada
-        codigo_entry.insert(0, sku)  # Inserir novo SKU
+    total_skus = len(skus)
+    if total_skus == 0:
+        return
+
+    loading_window, loading_label = mostrar_janela_carregamento(total_skus)
+    
+    for idx, sku in enumerate(skus):
+        codigo_entry.delete(0, tk.END)
+        codigo_entry.insert(0, sku)
         buscar_item(access_token)
+
+        # Atualizar a janela de carregamento
+        remaining_skus = total_skus - (idx + 1)
+        loading_label.config(text=f"Restam {remaining_skus} SKUs para adicionar.")
+        loading_window.update_idletasks()
+
+    loading_window.destroy()
+
+def mostrar_janela_carregamento(total_skus):
+    loading_window = tk.Toplevel(root)
+    loading_window.title("Carregando...")
+    loading_label = tk.Label(loading_window, text=f"Restam {total_skus} SKUs para adicionar.")
+    loading_label.pack()
+    return loading_window, loading_label
 
 def buscar_item(access_token):
     codigo = codigo_entry.get()
@@ -47,13 +87,13 @@ def buscar_item(access_token):
         item = data[0]
         id_item = item['id']
         nome = item['nome']
-        sku = item['codigo']  # Aqui estamos pegando o SKU que é representado pelo campo "codigo"
+        sku = item['codigo'] 
 
         codigo_item, codigo_cor, cor_final = extrair_cor(nome)
         referencia = extrair_referencia(nome)
 
         # Verificar se o item já existe na tabela usando o código
-        if any(df['SKU'] == sku):  # Aqui também mudamos para verificar o SKU
+        if any(df['SKU'] == sku):  
             tk.messagebox.showinfo("Item Duplicado", "O item já existe na tabela.")
             return
 
@@ -90,18 +130,27 @@ def adicionar_item(id_item, nome, codigo_item, codigo_cor, cor_final, referencia
     global df
 
     novo_item = {
-        'ID': id_item, 
-        'Cod. Item': codigo_item, 
+        'ID': id_item,
+        'Cod. Item': codigo_item,
         'Cod. Cor': codigo_cor,
-        'Cor': cor_final, 
-        'Referência': referencia, 
+        'Cor': cor_final,
+        'Referência': referencia,
         'SKU': sku  
     }
     
+    # Ler todo o arquivo Excel para um dicionário de DataFrames
+    xls = pd.read_excel(arquivo, sheet_name=None)
+
+    # Modificar o DataFrame que corresponde à empresa selecionada
+    df = xls[selected_company]
     novo_index = len(df)
     df.loc[novo_index] = novo_item
 
-    df.to_excel(arquivo, index=False)
+    # Escrever todo o dicionário de volta para o arquivo Excel
+    with pd.ExcelWriter(arquivo, engine='openpyxl') as writer:
+        for sheet, frame in xls.items():
+            frame.to_excel(writer, sheet_name=sheet, index=False)
+
     return novo_index, novo_item
 
 def exibir_tabela(root):
@@ -122,7 +171,6 @@ def exibir_tabela(root):
 
     # Carregar a tabela existente ou criar um novo DataFrame vazio
     if os.path.exists(arquivo):
-        df = pd.read_excel(arquivo)
         df['ID'] = df['ID'].astype(str).str.replace(',', '').astype('int64')
         df['Cod. Item'] = df['Cod. Item'].astype(str).apply(lambda x: re.sub(r'\D', '', x))
         df['Cod. Cor'] = df['Cod. Cor'].astype(str).apply(lambda x: re.sub(r'\D', '', x))
@@ -179,6 +227,16 @@ def excluir_itens():
             if tree.item(item, 'values')[0] == '✓':
                 items_to_delete.append(item)
 
+        # Carregar o arquivo Excel inteiro
+        xls = pd.ExcelFile(arquivo)
+        
+        # Carregar a sheet da empresa selecionada
+        if selected_company in xls.sheet_names:
+            df = pd.read_excel(xls, sheet_name=selected_company)
+        else:
+            print(f"A sheet para a empresa {selected_company} não foi encontrada.")
+            return
+
         if indices_exibidos:
             # Se itens foram filtrados, use os índices reais para excluir
             indices_reais = [indices_exibidos[int(item)] for item in items_to_delete]
@@ -187,15 +245,17 @@ def excluir_itens():
             # Se não houve filtragem, use os índices da árvore diretamente
             df = df.drop(df.index[[int(item) for item in items_to_delete]]).reset_index(drop=True)
         
+        # Salvar a tabela atualizada na sheet da empresa selecionada
+        with pd.ExcelWriter(arquivo, engine='openpyxl', mode='a') as writer:
+            writer.book = xls
+            df.to_excel(writer, sheet_name=selected_company, index=False)
+        
         # Recriar o Treeview com os itens restantes
         for item in tree.get_children():
             tree.delete(item)
         for index, row in df.iterrows():
             tree.insert(parent='', index='end', iid=index, text='',
                         values=('', row['ID'], row['Cod. Item'], row['Cod. Cor'], row['Cor'], row['Referência'], row['SKU']))
-
-        # Salvar a tabela atualizada
-        df.to_excel(arquivo, index=False)
 
 def buscar_resultado():
     global indices_exibidos
