@@ -2,13 +2,17 @@ from datetime import datetime, timedelta
 import os
 import subprocess
 import base64
-import tkinter as tk
+import customtkinter as tk
 import requests
 import subprocess
 import threading
 import webbrowser
 import time
 import json
+
+if not os.environ.get("LAUNCHED_FROM_LAUNCH_PY"):
+    print("Por favor, inicie o programa pelo launch.py")
+    exit()
 
 # Carregando dados consolidados do arquivo JSON
 with open("config.json", "r") as file:
@@ -70,7 +74,7 @@ EXPIRES_IN = 21600
 def update_time_remaining(time_remaining_label, refresh_token, client_credentials_base64):
     global token_expiry_time
     
-    remaining_time = None  # Inicializa a variável aqui
+    remaining_time = None
 
     if isinstance(token_expiry_time, datetime):
         remaining_time = token_expiry_time - datetime.now()
@@ -79,39 +83,26 @@ def update_time_remaining(time_remaining_label, refresh_token, client_credential
         return
 
     if remaining_time and remaining_time.total_seconds() <= 0:
-        write_to_console(console, "A chave de acesso está expirada.\n  Atualizando...")
-        new_access_token, new_refresh_token, new_expiry_time = refresh_access_token(refresh_token, client_credentials_base64)
-        if new_access_token:
-            global access_token
-            access_token = new_access_token
-            token_expiry_time = new_expiry_time
-            write_to_console(console, "Chave de acesso atualizada com sucesso.")
-            
-            # Atualizando o rótulo do relógio com o novo tempo de expiração
-            if isinstance(token_expiry_time, datetime):
-                remaining_time = token_expiry_time - datetime.now()
-            else:
-                print(f"token_expiry_time is not a datetime object: {token_expiry_time}")
-                return
-            
-            remaining_hours, remainder = divmod(remaining_time.total_seconds(), 3600)
-            remaining_minutes, remaining_seconds = divmod(remainder, 60)
-            new_time_string = f"{int(remaining_hours)}:{int(remaining_minutes)}:{int(remaining_seconds)}"
-            time_remaining_label.config(text=new_time_string)
+        # ... (seu código para atualizar o token aqui)
+        
+        # Atualizando o rótulo do relógio com o novo tempo de expiração
+        if isinstance(token_expiry_time, datetime):
+            remaining_time = token_expiry_time - datetime.now()
         else:
-            write_to_console(console, "Falha ao atualizar a chave de acesso. Verifique as credenciais.")
-            time_string = "00:00:00"
-        return
+            print(f"token_expiry_time is not a datetime object: {token_expiry_time}")
+            return
 
-    # Adicione uma verificação aqui também
+    # Verificar se o tempo restante é uma instância válida
     if remaining_time:
         remaining_hours, remainder = divmod(remaining_time.total_seconds(), 3600)
         remaining_minutes, remaining_seconds = divmod(remainder, 60)
-        time_string = f"{int(remaining_hours)}:{int(remaining_minutes)}:{int(remaining_seconds)}"
+
+        # Formatando o tempo para sempre ter dois dígitos
+        time_string = f"{str(int(remaining_hours)).zfill(2)}:{str(int(remaining_minutes)).zfill(2)}:{str(int(remaining_seconds)).zfill(2)}"
     else:
         time_string = "00:00:00"
 
-    time_remaining_label.config(text=time_string)
+    time_remaining_label.configure(text=time_string)
     root.update_idletasks()
     time_remaining_label.after(1000, update_time_remaining, time_remaining_label, refresh_token, client_credentials_base64)
 
@@ -119,7 +110,27 @@ def write_to_console(console, message):
     padded_message = f"  {message}  "
     console.insert(tk.END, padded_message + "\n")
     console.see(tk.END)
-    root.update()    
+    root.update()
+
+def on_closing():
+    try:
+        os.remove("sel.json")
+        print("Arquivo sel.json excluído com sucesso.")
+    except FileNotFoundError:
+        print("Arquivo sel.json não encontrado.")
+    root.quit()
+    root.destroy()
+
+def center_window(root, width, height):
+    # Obtém a resolução da tela
+    screen_width = root.winfo_screenwidth()
+    screen_height = root.winfo_screenheight()
+
+    # Calcula as coordenadas x e y para centralizar a janela
+    x = (screen_width / 2) - (width / 2)
+    y = (screen_height / 2) - (height / 2)
+
+    root.geometry(f"{width}x{height}+{int(x)}+{int(y)}")
 
 def main():
     global time_remaining_label
@@ -129,18 +140,46 @@ def main():
     global root
 
     # Criando a janela principal
-    root = tk.Tk()
+    root = tk.CTk()
     root.title("Autenticação")
-    root.geometry("505x420")
+    root.geometry("450x420")
     root.configure(bg="gray20")
+    root.resizable(False, False)
+    root.protocol("WM_DELETE_WINDOW", on_closing)
 
-    company_label = tk.Label(root, fg='white', bg="gray20", font=("Courier New", 15, 'bold'), text=f"{selected_company}")
-    company_label.pack(pady=8)
+    center_window(root, 450, 420)
 
-    console_frame = tk.Frame(root, padx=20, pady=5, bg="gray20") # Ajuste o padding conforme necessário
-    console_frame.pack()
+    # Frame para conter os elementos alinhados horizontalmente
+    top_frame = tk.CTkFrame(root, fg_color='transparent')
+    top_frame.pack(fill="x", anchor="n")
 
-    console = tk.Text(console_frame, height=15, width=50, bg="black", fg="green", font=("Courier New", 12, 'bold'))
+    # Botão para voltar à seleção de empresa
+    def go_back():
+        root.protocol("WM_DELETE_WINDOW", on_closing)
+        root.quit()
+        root.destroy()
+        subprocess.run(["python", "launch.py"])
+
+    btn_back = tk.CTkButton(top_frame, fg_color="black", text="<", font=("Lucida Sans", 14, 'bold'), border_width=2, border_color='#4d7cff', command=go_back, width=20, height=20)
+    btn_back.grid(row=0, column=0, padx=0, pady=12)
+
+    # Label para mostrar a empresa selecionada
+    company_label = tk.CTkLabel(top_frame, text_color="white", fg_color='transparent', font=("Lucida Sans", 20, 'bold'), text=f"{selected_company}")
+    company_label.grid(row=0, column=1)  
+
+    # Label para mostrar o tempo restante
+    time_remaining_label = tk.CTkLabel(top_frame, text='00:00:00', text_color='white', fg_color='transparent', font=("Lucida Sans", 14, 'bold'), width=10)
+    time_remaining_label.grid(row=0, column=2, padx=0) 
+
+    # Ajustando o comportamento de expansão das colunas
+    top_frame.grid_columnconfigure(0, weight=1)
+    top_frame.grid_columnconfigure(1, weight=2)  # Permitindo que esta coluna se expanda mais para centralizar o company_label
+    top_frame.grid_columnconfigure(2, weight=1)
+
+    console_frame = tk.CTkFrame(root) 
+    console_frame.pack(pady=10)
+
+    console = tk.CTkTextbox(console_frame, height=280, width=410, text_color="white", fg_color="black", font=("Lucida Sans", 14, 'bold'), border_width=2, border_color="#4d7cff")
     console.pack()
 
     refresh_token = REFRESH_TOKEN
@@ -159,16 +198,6 @@ def main():
     token_expiry_time = token_capture_time + timedelta(seconds=int(EXPIRES_IN))
     time_remaining = token_expiry_time - datetime.now()
 
-    def animate_loading(message):
-        for i in range(2):  # Repete a animação 4 vezes
-            for j in range(4):  
-                dots = '.' * j
-                console.delete(tk.END + "-2l", tk.END)
-                write_to_console(console, f"{message}{dots}")
-                time.sleep(0.3)
-        console.delete(tk.END + "-2l", tk.END)
-        write_to_console(console, f"{message} ✓")
-
     def clear_console(console):
         console.delete(1.0, tk.END)
     
@@ -177,14 +206,14 @@ def main():
     print("Horário de expiração do token:", token_expiry_time)
     print("Tempo restante:", time_remaining)
 
-    animate_loading("\n  Verificando chave de acesso")
+    write_to_console(console, "\n  Verificando chave de acesso")
     
     if not verify_access_token(access_token) or time_remaining.total_seconds() <= 0:
         access_token, refresh_token, _ = refresh_access_token(refresh_token, client_credentials_base64)
         if access_token:
             write_to_console(console, "A chave de acesso está expirada ou inválida.\n")
             time.sleep(1)
-            animate_loading("\n  Atualizando")
+            write_to_console(console, "\n  Atualizando")
             time.sleep(1)
             write_to_console(console, "Chave de acesso atualizada com sucesso.")
             time.sleep(1)
@@ -214,36 +243,31 @@ def main():
         time.sleep(2)
         clear_console(console)
 
+    # Estilo para os botões usando CustomTkinter
     botao_estilo = {
-        'bg': '#555555',       
-        'fg': '#f0f0f0',      
-        'font': ('Helvetica', 12, 'bold'),
-        'relief': 'solid',     
-        'borderwidth': 2, 
-        'activebackground': '#666666', 
-        'activeforeground': '#ffffff',  
-        'width': 12,           
-        'height': 2           
+        'width': 100,  # Largura em pixels
+        'height': 50,  # Altura em pixels
+        'fg_color': ('', '#000000'),  # Cores de fundo
+        'border_width': 2,  # Largura da borda em pixels
+        'border_color':('#4d7cff'),
+        'text_color': '#ffffff',  # Cor do texto
+        'font': ('Lucida Sans', 16, 'bold')  # Fonte e tamanho
     }
 
-    # Criando um frame para os botões com padding de 1 cm
-    buttons_frame = tk.Frame(root, padx=20, pady=3, bg="gray20")
+    buttons_frame = tk.CTkFrame(root, fg_color='transparent')
     buttons_frame.pack()
 
     # Botões para escolher entre Envio e Cadastro
-    btn_envio = tk.Button(buttons_frame, text="Envio", command=open_envio, **botao_estilo)
-    btn_cadastro = tk.Button(buttons_frame, text="Cadastro", command=open_cadastro, **botao_estilo)
+    btn_envio = tk.CTkButton(buttons_frame, text="Adicionar\nPedido", command=open_envio, **botao_estilo)
+    btn_cadastro = tk.CTkButton(buttons_frame, text="Cadastrar\nProduto", command=open_cadastro, **botao_estilo)
 
     # Usando grid para posicionar os botões lado a lado
     btn_envio.grid(row=0, column=0, padx=10) 
     btn_cadastro.grid(row=0, column=1, padx=10)
 
     # Criar o botão de etiqueta
-    btn_etiqueta = tk.Button(buttons_frame, text="Etiqueta", command=None, **botao_estilo)
+    btn_etiqueta = tk.CTkButton(buttons_frame, text="Gerar\nEtiqueta", command=None, **botao_estilo)
     btn_etiqueta.grid(row=0, column=2, padx=10)
-
-    time_remaining_label = tk.Label(root, text='', fg='white', font=("Courier New", 12, 'bold'), bg="gray20")
-    time_remaining_label.pack()
 
     threading.Thread(target=update_time_remaining, args=(time_remaining_label, refresh_token, client_credentials_base64)).start()
 
