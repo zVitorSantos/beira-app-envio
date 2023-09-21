@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta
+import os
 import subprocess
 import base64
 import tkinter as tk
@@ -7,11 +8,49 @@ import subprocess
 import threading
 import webbrowser
 import time
-from config import CLIENT_ID, CLIENT_SECRET, SCOPES, STATE, EXPIRES_IN
-from tokens import ACCESS_TOKEN, REFRESH_TOKEN
+import json
+
+# Carregando dados consolidados do arquivo JSON
+with open("config.json", "r") as file:
+    consolidated_data = json.load(file)
+
+# Recuperando a empresa selecionada do arquivo temporário
+try:
+    with open("sel.json", "r") as file:
+        selected_company_data = json.load(file)
+    selected_company = selected_company_data.get("sel", None)
+except FileNotFoundError:
+    print("Arquivo de empresa selecionada não encontrado.")
+    exit(1)
+
+# Recuperando tokens e configurações com base na empresa selecionada
+ACCESS_TOKEN = consolidated_data.get(selected_company, {}).get("tokens", {}).get("ACCESS_TOKEN", None)
+REFRESH_TOKEN = consolidated_data.get(selected_company, {}).get("tokens", {}).get("REFRESH_TOKEN", None)
+CLIENT_ID = consolidated_data.get(selected_company, {}).get("config", {}).get("CLIENT_ID", None)
+CLIENT_SECRET = consolidated_data.get(selected_company, {}).get("config", {}).get("CLIENT_SECRET", None)
+STATE = consolidated_data.get(selected_company, {}).get("config", {}).get("STATE", None)
+SCOPES = consolidated_data.get(selected_company, {}).get("config", {}).get("SCOPES", None)
+LAST_UPDATED_TIME = consolidated_data.get(selected_company, {}).get("time", None)
+
+# Recuperando o tempo da última atualização com base na empresa selecionada
+LAST_UPDATED_TIME_STR = consolidated_data.get(selected_company, {}).get("time", None)
+if LAST_UPDATED_TIME_STR:
+    LAST_UPDATED_TIME = datetime.strptime(LAST_UPDATED_TIME_STR, '%Y-%m-%d %H:%M:%S')
+else:
+    LAST_UPDATED_TIME = None  
+
+# Quando você receber novos tokens, atualize o arquivo JSON
+def update_tokens(new_access_token, new_refresh_token):
+    consolidated_data[selected_company]["tokens"]["ACCESS_TOKEN"] = new_access_token
+    consolidated_data[selected_company]["tokens"]["REFRESH_TOKEN"] = new_refresh_token
+    with open("config.json", "w") as file:
+        json.dump(consolidated_data, file, indent=4)
 
 print("ACCESS_TOKEN:", ACCESS_TOKEN)
 print("REFRESH_TOKEN:", REFRESH_TOKEN)
+
+# Depois de ler selected_company.json
+print(f"Empresa selecionada: {selected_company}")
 
 # URL de autorização (ajuste os parâmetros conforme necessário)
 AUTH_URL = f"https://www.bling.com.br/Api/v3/oauth/authorize?response_type=code&client_id={CLIENT_ID}&state={STATE}&scopes={SCOPES}"
@@ -25,6 +64,8 @@ TOKEN_URL = 'https://www.bling.com.br/Api/v3/oauth/token'
 
 console_manager = None
 token_expiry_time = None
+
+EXPIRES_IN = 21600
 
 def update_time_remaining(time_remaining_label, refresh_token, client_credentials_base64):
     global token_expiry_time
@@ -90,10 +131,13 @@ def main():
     # Criando a janela principal
     root = tk.Tk()
     root.title("Autenticação")
-    root.geometry("505x395")
+    root.geometry("505x420")
     root.configure(bg="gray20")
 
-    console_frame = tk.Frame(root, padx=20, pady=20, bg="gray20") # Ajuste o padding conforme necessário
+    company_label = tk.Label(root, fg='white', bg="gray20", font=("Courier New", 15, 'bold'), text=f"{selected_company}")
+    company_label.pack(pady=8)
+
+    console_frame = tk.Frame(root, padx=20, pady=5, bg="gray20") # Ajuste o padding conforme necessário
     console_frame.pack()
 
     console = tk.Text(console_frame, height=15, width=50, bg="black", fg="green", font=("Courier New", 12, 'bold'))
@@ -108,10 +152,8 @@ def main():
         access_token = ACCESS_TOKEN
         refresh_token = REFRESH_TOKEN
 
-    # Leia o horário da captura do access_token de time.txt
-    with open('time.txt', 'r') as file:
-        token_capture_time_str = file.read().strip()
-        token_capture_time = datetime.strptime(token_capture_time_str, '%Y-%m-%d %H:%M:%S')
+    token_capture_time_str = consolidated_data.get(selected_company, {}).get("time", None)
+    token_capture_time = datetime.strptime(token_capture_time_str, '%Y-%m-%d %H:%M:%S')
 
     # Calcule o tempo restante
     token_expiry_time = token_capture_time + timedelta(seconds=int(EXPIRES_IN))
@@ -180,12 +222,12 @@ def main():
         'borderwidth': 2, 
         'activebackground': '#666666', 
         'activeforeground': '#ffffff',  
-        'width': 15,           
+        'width': 12,           
         'height': 2           
     }
 
     # Criando um frame para os botões com padding de 1 cm
-    buttons_frame = tk.Frame(root, padx=20, pady=3, bg="gray20") # 1 cm padding
+    buttons_frame = tk.Frame(root, padx=20, pady=3, bg="gray20")
     buttons_frame.pack()
 
     # Botões para escolher entre Envio e Cadastro
@@ -195,6 +237,10 @@ def main():
     # Usando grid para posicionar os botões lado a lado
     btn_envio.grid(row=0, column=0, padx=10) 
     btn_cadastro.grid(row=0, column=1, padx=10)
+
+    # Criar o botão de etiqueta
+    btn_etiqueta = tk.Button(buttons_frame, text="Etiqueta", command=None, **botao_estilo)
+    btn_etiqueta.grid(row=0, column=2, padx=10)
 
     time_remaining_label = tk.Label(root, text='', fg='white', font=("Courier New", 12, 'bold'), bg="gray20")
     time_remaining_label.pack()
@@ -243,43 +289,59 @@ def refresh_access_token(refresh_token, client_credentials_base64):
         new_refresh_token = response_data['refresh_token']
         new_expiry_time = datetime.now() + timedelta(seconds=EXPIRES_IN)
 
-        # Salve os tokens e o tempo de expiração
-        with open('tokens.py', 'w') as file:
-            file.write(f'ACCESS_TOKEN = "{new_access_token}"\n')
-            file.write(f'REFRESH_TOKEN = "{new_refresh_token}"\n')
+        # Salve os tokens e o tempo de captura no arquivo config.json
+        consolidated_data[selected_company]["tokens"]["ACCESS_TOKEN"] = new_access_token
+        consolidated_data[selected_company]["tokens"]["REFRESH_TOKEN"] = new_refresh_token
+        consolidated_data[selected_company]["time"] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        with open('config.json', 'w') as file:
+            json.dump(consolidated_data, file, indent=4)
 
         capture_time_str = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        with open('time.txt', 'w') as file:
-            file.write(capture_time_str)
+        # Salve o tempo de captura no arquivo config.json
+        consolidated_data[selected_company]["time"] = capture_time_str
+        with open('config.json', 'w') as file:
+            json.dump(consolidated_data, file, indent=4)
 
         return new_access_token, new_refresh_token, new_expiry_time
 
     return None, None, None
 
 def initiate_authorization_flow():
+    # Inicia o servidor Flask em um processo separado
     flask_process = subprocess.Popen(['python', 'scripts/oauth.py'])
+    
+    # Aguarda alguns segundos para ter certeza de que o servidor Flask iniciou
     time.sleep(3)
-
+    
     # Abre a URL de autorização no navegador padrão do sistema
     webbrowser.open(AUTH_URL)
-
+    
     # Aguarde o processo Flask capturar e salvar os tokens
-    time.sleep(10) 
+    while not os.path.exists("flask_done.tmp"):
+        time.sleep(1)
+        
+    # Remove o arquivo temporário
+    if os.path.exists("flask_done.tmp"):
+        os.remove("flask_done.tmp")
 
-    # Importe os tokens atualizados de tokens.py (ou de onde quer que estejam salvos)
-    from tokens import ACCESS_TOKEN as new_access_token, REFRESH_TOKEN as new_refresh_token
-
+    # Termina o processo Flask
     flask_process.terminate()
+    
+    # Carrega os tokens atualizados do arquivo JSON
+    with open("config.json", "r") as file:
+        consolidated_data = json.load(file)
+        
+    new_access_token = consolidated_data.get(selected_company, {}).get("tokens", {}).get("ACCESS_TOKEN", None)
+    new_refresh_token = consolidated_data.get(selected_company, {}).get("tokens", {}).get("REFRESH_TOKEN", None)
 
-    # Retorne os tokens capturados
+    # Retorne os novos tokens
     return new_access_token, new_refresh_token
 
 if __name__ == "__main__":
     try:
-        with open('time.txt', 'r') as file:
-            expiry_time_str = file.read().strip()
-            token_expiry_time = datetime.strptime(expiry_time_str, '%Y-%m-%d %H:%M:%S')
-            token_expiry_time += timedelta(seconds=EXPIRES_IN)  
+        expiry_time_str = consolidated_data.get(selected_company, {}).get("time", None)
+        token_expiry_time = datetime.strptime(expiry_time_str, '%Y-%m-%d %H:%M:%S')
+        token_expiry_time += timedelta(seconds=EXPIRES_IN)  
     except FileNotFoundError:
         token_expiry_time = datetime.now()
     main()
