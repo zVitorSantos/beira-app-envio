@@ -10,6 +10,8 @@ from openpyxl import load_workbook
 import sys
 import json
 
+print("====================================================================")
+
 # Carregando dados consolidados do arquivo JSON
 with open("config.json", "r") as file:
     consolidated_data = json.load(file)
@@ -35,7 +37,6 @@ tree = None
 arquivo = 'data/tabela.xlsx'
 print(f"Selected company: {selected_company}")
 df = pd.read_excel(arquivo, sheet_name=selected_company)
-print(f"Dataframe head: {df.head()}")
 
 def carregar_skus_do_arquivo():
     file_path = filedialog.askopenfilename(filetypes=[("Text files", "*.txt")])
@@ -152,6 +153,7 @@ def adicionar_item(id_item, nome, codigo_item, codigo_cor, cor_final, referencia
             frame.to_excel(writer, sheet_name=sheet, index=False)
 
     return novo_index, novo_item
+    
 
 def exibir_tabela(root):
     global tree
@@ -273,7 +275,18 @@ def buscar_resultado():
     for index, row in resultado_busca.iterrows():
         tree.insert(parent='', index='end', iid=index, text='',
                     values=('', row['ID'], row['Cod. Item'], row['Cod. Cor'], row['Cor'], row['Referência'], row['SKU']))
-        
+
+def center_window(root, width, height):
+    # Obtém a resolução da tela
+    screen_width = root.winfo_screenwidth()
+    screen_height = root.winfo_screenheight()
+
+    # Calcula as coordenadas x e y para centralizar a janela
+    x = (screen_width / 2) - (width / 2)
+    y = (screen_height / 2) - (height / 2)
+
+    root.geometry(f"{width}x{height}+{int(x)}+{int(y)}")
+
 # Configurando cores escuras
 cor_fundo = '#2c2c2c'
 cor_texto = '#f0f0f0'
@@ -281,7 +294,10 @@ cor_texto = '#f0f0f0'
 # Interface gráfica
 root = tk.Tk()
 root.title("Adicionar Itens")
+root.geometry("270x320")
 root.configure(bg=cor_fundo)
+
+center_window(root, 270, 320)
 
 # Estilo para o Treeview
 style = ttk.Style()

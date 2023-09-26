@@ -118,6 +118,7 @@ json_data = {
             "tipoPessoa": "J",
             "numeroDocumento": "88.379.771/0035-21"
         },
+        "numeroPedidoCompra": str(dados_coletados_infos_df['Número OC'].iloc[0]),
         "categoria": {
             "id": 14650247114
         },
