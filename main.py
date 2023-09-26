@@ -49,7 +49,7 @@ def update_tokens(new_access_token, new_refresh_token):
     consolidated_data[selected_company]["tokens"]["REFRESH_TOKEN"] = new_refresh_token
     with open("config.json", "w") as file:
         json.dump(consolidated_data, file, indent=4)
-
+print("====================================================================")
 print("ACCESS_TOKEN:", ACCESS_TOKEN)
 print("REFRESH_TOKEN:", REFRESH_TOKEN)
 
@@ -63,7 +63,6 @@ BASE_URL = 'https://www.bling.com.br/Api/v3'
 
 VERIFY_URL = f'{BASE_URL}/contatos'
 
-# URL para o endpoint de token
 TOKEN_URL = 'https://www.bling.com.br/Api/v3/oauth/token'
 
 console_manager = None
@@ -83,7 +82,6 @@ def update_time_remaining(time_remaining_label, refresh_token, client_credential
         return
 
     if remaining_time and remaining_time.total_seconds() <= 0:
-        # ... (seu código para atualizar o token aqui)
         
         # Atualizando o rótulo do relógio com o novo tempo de expiração
         if isinstance(token_expiry_time, datetime):
@@ -173,7 +171,7 @@ def main():
 
     # Ajustando o comportamento de expansão das colunas
     top_frame.grid_columnconfigure(0, weight=1)
-    top_frame.grid_columnconfigure(1, weight=2)  # Permitindo que esta coluna se expanda mais para centralizar o company_label
+    top_frame.grid_columnconfigure(1, weight=2)  
     top_frame.grid_columnconfigure(2, weight=1)
 
     console_frame = tk.CTkFrame(root) 
@@ -232,14 +230,20 @@ def main():
     clear_console(console)
 
     def open_envio():
-        write_to_console(console, "Abrindo a função de Envio!")
+        write_to_console(console, "Abrindo a função de Enviar Pedidos!")
         subprocess.Popen(["python", "scripts/coleta.py"])
         time.sleep(2)
         clear_console(console)
 
     def open_cadastro():
-        write_to_console(console, "Abrindo a função de Cadastro!")
+        write_to_console(console, "Abrindo a função de Cadastrar Produtos!")
         subprocess.Popen(["python", "scripts/tabela.py"])
+        time.sleep(2)
+        clear_console(console)
+
+    def open_etiqueta():
+        write_to_console(console, "Abrindo a função de Gerar Etiquetas!")
+        subprocess.Popen(["python", "scripts/etiqueta.py"])
         time.sleep(2)
         clear_console(console)
 
@@ -260,13 +264,11 @@ def main():
     # Botões para escolher entre Envio e Cadastro
     btn_envio = tk.CTkButton(buttons_frame, text="Adicionar\nPedido", command=open_envio, **botao_estilo)
     btn_cadastro = tk.CTkButton(buttons_frame, text="Cadastrar\nProduto", command=open_cadastro, **botao_estilo)
+    btn_etiqueta = tk.CTkButton(buttons_frame, text="Gerar\nEtiqueta", command=open_etiqueta, **botao_estilo)
 
     # Usando grid para posicionar os botões lado a lado
     btn_envio.grid(row=0, column=0, padx=10) 
     btn_cadastro.grid(row=0, column=1, padx=10)
-
-    # Criar o botão de etiqueta
-    btn_etiqueta = tk.CTkButton(buttons_frame, text="Gerar\nEtiqueta", command=None, **botao_estilo)
     btn_etiqueta.grid(row=0, column=2, padx=10)
 
     threading.Thread(target=update_time_remaining, args=(time_remaining_label, refresh_token, client_credentials_base64)).start()
