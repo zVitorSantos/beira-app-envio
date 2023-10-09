@@ -4,12 +4,63 @@ import tabula
 import pandas as pd
 import re
 import time
-import sys
-sys.path.append(r'C:\Users\Usuario\Desktop\Bling API')
+import os
+import requests
 import tkinter as tk
-from tkinter import ttk
+from tkinter import messagebox
+import json
 from tkinter import filedialog
 from datetime import datetime
+
+if not os.environ.get("LAUNCHED_FROM_MAIN"):
+    print("Por favor, inicie o programa pelo launch.py")
+    exit()
+
+# Função para carregar o ACCESS_TOKEN
+def carregar_access_token():
+    try:
+        with open("config.json", "r") as file:
+            consolidated_data = json.load(file)
+
+        with open("sel.json", "r") as file:
+            selected_company_data = json.load(file)
+
+        selected_company = selected_company_data.get("sel", None)
+        ACCESS_TOKEN = consolidated_data.get(selected_company, {}).get("tokens", {}).get("ACCESS_TOKEN", None)
+        return ACCESS_TOKEN
+
+    except FileNotFoundError:
+        print("Arquivo de configuração ou empresa selecionada não encontrado.")
+        return None
+
+# Função para buscar o ID do item
+def buscar_id_item(codigo_item, codigo_cor):
+    ACCESS_TOKEN = carregar_access_token()
+    if ACCESS_TOKEN is None:
+        return None
+
+    BASE_URL = 'https://www.bling.com.br/Api/v3'
+    url = f"{BASE_URL}/produtos?nome={codigo_item} - {codigo_cor}"
+    headers = {'Authorization': f'Bearer {ACCESS_TOKEN}'}
+    response = requests.get(url, headers=headers)
+    if response.status_code == 200:
+        data = response.json().get('data', [])
+        if data:
+            return data[0]['id']
+        # Dentro da função buscar_id_item
+        print(f"Buscando ID para código: {codigo_item}, cor: {codigo_cor}")
+        print(f"Resposta da API: {response.json()}")
+    return None
+
+def selecionar_pdf():
+    root = tk.Tk()
+    root.withdraw() 
+    # Abre a janela de seleção de arquivo
+    pdf_path = filedialog.askopenfilename(filetypes=[("PDF files", "*.pdf")])
+    if pdf_path:
+        extrair_dados(pdf_path)
+    else:
+        print("Nenhum arquivo selecionado.")
 
 def format_date(date_str):
     try:
@@ -25,26 +76,14 @@ def extrair_dados(pdf_path):
     data_emissao = re.search(r'DATA DE EMISSÃO:\s*(\d{2}/\d{2}/\d{4})', texto)
     tabelas = tabula.read_pdf(pdf_path, pages='all', multiple_tables=True)
     tabela_produtos = tabelas[0]
-    # Inicializar o multiplicador com o valor padrão
-    multiplicador_quant = 1
-    multiplicador_vl_unit = 1
 
-    # Criar uma nova tabela para armazenar as linhas transformadas
+    # Criar uma nova tabela para armazenar as linhas não problemáticas
     nova_tabela_produtos = pd.DataFrame(columns=tabela_produtos.columns)
-
+    
     # Iterar pelas linhas da tabela original
     for index, row in tabela_produtos.iterrows():
-        if 'MIL' in str(row['Seq.']):
-            multiplicador_quant = 1000
-            multiplicador_vl_unit = 1/1000
-        elif 'PAR' in str(row['Seq.']):
-            multiplicador_quant = 1
-            multiplicador_vl_unit = 1/2
-
-        # Se a linha não for problemática, aplicar os multiplicadores e adicionar à nova tabela
+        # Se a linha não for problemática, adicionar à nova tabela
         if not 'Remessa:' in str(row['Seq.']):
-            row['Quant.'] = pd.to_numeric(row['Quant.'], errors='coerce') * multiplicador_quant
-            row['Vl. Unit.'] *= multiplicador_vl_unit
             nova_tabela_produtos.loc[index] = row
 
     # Manter a tabela nova como a tabela de produtos
@@ -53,7 +92,7 @@ def extrair_dados(pdf_path):
     # Remover as colunas não necessárias e manter a coluna 'Código'
     tabela_produtos = tabela_produtos.drop(columns=['Seq.', '% IPI', 'Tam.', 'Descrição'])
     
-    data_prevista = tabela_produtos['Dt.'].iloc[0]
+    data_prevista = str(tabela_produtos['Dt.'].iloc[0])
 
     # Filtrar a coluna 'Cor' para pegar apenas o primeiro conjunto de números
     tabela_produtos['Cor'] = tabela_produtos['Cor'].str.split(' ').str[0]
@@ -63,8 +102,31 @@ def extrair_dados(pdf_path):
     tabela_produtos = tabela_produtos[colunas_ordenadas]
     tabela_produtos['Item'] = range(1, len(tabela_produtos) + 1)
 
+    # Adicionar novamente a coluna 'ID', se necessário
+    if 'ID' not in tabela_produtos.columns:
+        tabela_produtos['ID'] = None
+
+    itens_faltantes = []
+
+    # Após o DataFrame tabela_produtos estar pronto
+    for index, row in tabela_produtos.iterrows():
+        codigo_item = str(int(row['Código'])).zfill(6)
+        codigo_cor = str(int(row['Cor'])).zfill(5)
+        id_item = buscar_id_item(codigo_item, codigo_cor)
+        tabela_produtos.at[index, 'ID'] = id_item
+
+        if id_item is None:
+            itens_faltantes.append(f"Código: {codigo_item}, Cor: {codigo_cor}")
+    
+    if itens_faltantes:
+        root = tk.Tk()
+        root.withdraw() 
+        mensagem = "Itens faltantes no sistema:\n" + "\n".join(itens_faltantes)
+        messagebox.showwarning("Itens Faltantes", mensagem)
+        root.mainloop()
+
     # Ajustar a ordem final das colunas
-    colunas_finais = ['Item', 'Código', 'Cor', 'Quant.', 'Vl. Unit.', 'Total']
+    colunas_finais = ['Item', 'ID', 'Código', 'Cor', 'Quant.', 'Vl. Unit.', 'Total'] 
     tabela_produtos = tabela_produtos[colunas_finais]
 
     general_info = {
@@ -75,7 +137,7 @@ def extrair_dados(pdf_path):
 
     general_info_df = pd.DataFrame([general_info])
 
-    file_name = 'coleta.xlsx'
+    file_name = 'data/coleta.xlsx'
     writer = pd.ExcelWriter(file_name, engine='xlsxwriter')
 
     general_info_df.to_excel(writer, sheet_name='Infos', index=False)
@@ -84,17 +146,6 @@ def extrair_dados(pdf_path):
 
     writer.close()
 
-    time.sleep(2)
     subprocess.call(["python", "scripts/post.py"])
-
-def selecionar_pdf():
-    root = tk.Tk()
-    root.withdraw() 
-    # Abre a janela de seleção de arquivo
-    pdf_path = filedialog.askopenfilename(filetypes=[("PDF files", "*.pdf")])
-    if pdf_path:
-        extrair_dados(pdf_path)
-    else:
-        print("Nenhum arquivo selecionado.")
 
 selecionar_pdf()

@@ -50,11 +50,6 @@ def update_tokens(new_access_token, new_refresh_token):
     with open("config.json", "w") as file:
         json.dump(consolidated_data, file, indent=4)
 print("====================================================================")
-print("ACCESS_TOKEN:", ACCESS_TOKEN)
-print("REFRESH_TOKEN:", REFRESH_TOKEN)
-
-# Depois de ler selected_company.json
-print(f"Empresa selecionada: {selected_company}")
 
 # URL de autorização (ajuste os parâmetros conforme necessário)
 AUTH_URL = f"https://www.bling.com.br/Api/v3/oauth/authorize?response_type=code&client_id={CLIENT_ID}&state={STATE}&scopes={SCOPES}"
@@ -104,11 +99,22 @@ def update_time_remaining(time_remaining_label, refresh_token, client_credential
     root.update_idletasks()
     time_remaining_label.after(1000, update_time_remaining, time_remaining_label, refresh_token, client_credentials_base64)
 
-def write_to_console(console, message):
-    padded_message = f"  {message}  "
-    console.insert(tk.END, padded_message + "\n")
-    console.see(tk.END)
-    root.update()
+def write_to_console(console, message, newline=False, **kwargs):
+    try:
+        if root and console.winfo_exists():  # Verifica o root e console
+            padded_message = f"  {message}  "
+            if kwargs:
+                for key, value in kwargs.items():
+                    extra_info = f"{value}"
+                    if newline:
+                        padded_message += "\n  " + extra_info
+                    else:
+                        padded_message += " " + extra_info
+            console.insert(tk.END, padded_message + "\n")
+            console.see(tk.END)
+            root.update()
+    except Exception as e:
+        print(f"Erro ao escrever no console: {e}")
 
 def on_closing():
     try:
@@ -199,9 +205,12 @@ def main():
     def clear_console(console):
         console.delete(1.0, tk.END)
     
-    print("Horário de captura do token:", token_capture_time)
-    print("EXPIRES_IN:", EXPIRES_IN)
-    print("Horário de expiração do token:", token_expiry_time)
+    def clear_last(console):
+        last_line_index = console.index(tk.END + "-2l linestart")
+        console.delete(last_line_index, tk.END)
+    
+    print("Captura", token_capture_time)
+    print("Expiry:", token_expiry_time)
     print("Tempo restante:", time_remaining)
 
     write_to_console(console, "\n  Verificando chave de acesso")
@@ -218,34 +227,41 @@ def main():
             clear_console(console)
         else:
             time.sleep(1)
-            write_to_console(console, "Falha ao atualizar a chave de acesso. Verifique as credenciais.")
+            write_to_console(console, "Falha ao atualizar a chave de acesso. \nTentando novamente...")
             return
+
     else:
         time.sleep(1)
         write_to_console(console, "A chave de acesso está ativa.")
         time.sleep(1)
-
-    write_to_console(console, "A aplicação está pronta para ser usada.\n")
-    time.sleep(2)
-    clear_console(console)
+        clear_console(console)
 
     def open_envio():
-        write_to_console(console, "Abrindo a função de Enviar Pedidos!")
+        os.environ["LAUNCHED_FROM_MAIN"] = "True"
         subprocess.Popen(["python", "scripts/coleta.py"])
-        time.sleep(2)
-        clear_console(console)
-
-    def open_cadastro():
-        write_to_console(console, "Abrindo a função de Cadastrar Produtos!")
-        subprocess.Popen(["python", "scripts/tabela.py"])
-        time.sleep(2)
-        clear_console(console)
+        write_to_console(console, "Abrindo importação de pedidos.")
+        time.sleep(3)
+        clear_last(console)
 
     def open_etiqueta():
-        write_to_console(console, "Abrindo a função de Gerar Etiquetas!")
+        os.environ["LAUNCHED_FROM_MAIN"] = "True"
         subprocess.Popen(["python", "scripts/etiqueta.py"])
-        time.sleep(2)
-        clear_console(console)
+
+    def open_xml():
+        os.environ["LAUNCHED_FROM_MAIN"] = "True"
+        subprocess.Popen(["python", "scripts/emitir_xml.py"])
+        
+    def mask_token(token):
+        return token[:13] + "*****"
+
+    masked_ACCESS_TOKEN = mask_token(ACCESS_TOKEN)
+    masked_REFRESH_TOKEN = mask_token(REFRESH_TOKEN)
+
+    write_to_console(console, "Access:", newline=False, ACCESS_TOKEN=masked_ACCESS_TOKEN)
+    write_to_console(console, "Refresh:", newline=False, REFRESH_TOKEN=masked_REFRESH_TOKEN)
+    write_to_console(console, "Captura:", newline=False, token_capture_time=token_capture_time)
+    write_to_console(console, "Expiração:", newline=False, token_expiry_time=token_expiry_time)
+    write_to_console(console, "==========================================")
 
     # Estilo para os botões usando CustomTkinter
     botao_estilo = {
@@ -263,21 +279,21 @@ def main():
 
     # Botões para escolher entre Envio e Cadastro
     btn_envio = tk.CTkButton(buttons_frame, text="Adicionar\nPedido", command=open_envio, **botao_estilo)
-    btn_cadastro = tk.CTkButton(buttons_frame, text="Cadastrar\nProduto", command=open_cadastro, **botao_estilo)
     btn_etiqueta = tk.CTkButton(buttons_frame, text="Gerar\nEtiqueta", command=open_etiqueta, **botao_estilo)
+    btn_xml = tk.CTkButton(buttons_frame, text="Gerar\nXML", command=open_xml, **botao_estilo)
 
     # Usando grid para posicionar os botões lado a lado
     btn_envio.grid(row=0, column=0, padx=10) 
-    btn_cadastro.grid(row=0, column=1, padx=10)
     btn_etiqueta.grid(row=0, column=2, padx=10)
+    btn_xml.grid(row=0, column=3, padx=10)
 
     threading.Thread(target=update_time_remaining, args=(time_remaining_label, refresh_token, client_credentials_base64)).start()
 
     root.mainloop()
 
 def update_access_token(new_access_token, new_refresh_token):
-    print("Atualizando ACCESS_TOKEN:", new_access_token)
-    print("Atualizando REFRESH_TOKEN:", new_refresh_token)
+    #write_to_console(console,"Atualizando ACCESS_TOKEN:", new_access_token=new_access_token)
+    #write_to_console(console,"Atualizando REFRESH_TOKEN:", new_refresh_token=new_refresh_token)
     with open('tokens.py', 'r') as file:
         lines = file.readlines()
 
@@ -293,9 +309,51 @@ def update_access_token(new_access_token, new_refresh_token):
 # Ajustando as funções de verificação e atualização para receber os parâmetros
 def verify_access_token(access_token):
     response = requests.get(VERIFY_URL, headers={'Authorization': f'Bearer {access_token}'})
-    print("Código de status da resposta:", response.status_code)
-    print("Token sendo verificado:", access_token)
+    #print("Código de status da resposta:", response.status_code)
+    #print("Token sendo verificado:", access_token)
     return response.status_code == 200
+
+def auto_refresh_token():
+    global token_expiry_time
+    while True:
+        # Recarregue os dados mais recentes da empresa selecionada
+        with open("config.json", "r") as file:
+            consolidated_data = json.load(file)
+        
+        try:
+            with open("sel.json", "r") as file:
+                selected_company_data = json.load(file)
+            selected_company = selected_company_data.get("sel", None)
+        except FileNotFoundError:
+            print("Arquivo de empresa selecionada não encontrado.")
+            time.sleep(60)
+            continue
+
+        ACCESS_TOKEN = consolidated_data.get(selected_company, {}).get("tokens", {}).get("ACCESS_TOKEN", None)
+        REFRESH_TOKEN = consolidated_data.get(selected_company, {}).get("tokens", {}).get("REFRESH_TOKEN", None)
+        CLIENT_ID = consolidated_data.get(selected_company, {}).get("config", {}).get("CLIENT_ID", None)
+        CLIENT_SECRET = consolidated_data.get(selected_company, {}).get("config", {}).get("CLIENT_SECRET", None)
+        
+        # Atualize o client_credentials_base64 com base na empresa selecionada
+        client_credentials_base64 = base64.b64encode(f"{CLIENT_ID}:{CLIENT_SECRET}".encode('ascii')).decode('ascii')
+
+        LAST_UPDATED_TIME_STR = consolidated_data.get(selected_company, {}).get("time", None)
+        if LAST_UPDATED_TIME_STR:
+            LAST_UPDATED_TIME = datetime.strptime(LAST_UPDATED_TIME_STR, '%Y-%m-%d %H:%M:%S')
+            token_expiry_time = LAST_UPDATED_TIME + timedelta(seconds=EXPIRES_IN)
+        else:
+            token_expiry_time = None
+
+        if token_expiry_time and datetime.now() >= token_expiry_time:
+            new_access_token, new_refresh_token, new_expiry_time = refresh_access_token(REFRESH_TOKEN, client_credentials_base64)
+            if new_access_token:
+                # Atualize os tokens e o tempo de captura no arquivo JSON
+                update_tokens(new_access_token, new_refresh_token)
+
+                # Atualize a variável global
+                token_expiry_time = new_expiry_time
+
+        time.sleep(60)
 
 def refresh_access_token(refresh_token, client_credentials_base64):
     headers = {
@@ -328,8 +386,14 @@ def refresh_access_token(refresh_token, client_credentials_base64):
         with open('config.json', 'w') as file:
             json.dump(consolidated_data, file, indent=4)
 
-        return new_access_token, new_refresh_token, new_expiry_time
+        # Atualizar token_expiry_time aqui
+        global token_expiry_time
+        token_expiry_time = datetime.now() + timedelta(seconds=EXPIRES_IN)
 
+        subprocess.Popen(["python", "launch.py"])
+
+        return new_access_token, new_refresh_token, token_expiry_time
+    
     return None, None, None
 
 def initiate_authorization_flow():
@@ -366,8 +430,17 @@ def initiate_authorization_flow():
 if __name__ == "__main__":
     try:
         expiry_time_str = consolidated_data.get(selected_company, {}).get("time", None)
-        token_expiry_time = datetime.strptime(expiry_time_str, '%Y-%m-%d %H:%M:%S')
-        token_expiry_time += timedelta(seconds=EXPIRES_IN)  
+        if expiry_time_str:
+            token_expiry_time = datetime.strptime(expiry_time_str, '%Y-%m-%d %H:%M:%S')
+            token_expiry_time += timedelta(seconds=EXPIRES_IN)  
+        else:
+            token_expiry_time = None
     except FileNotFoundError:
-        token_expiry_time = datetime.now()
+        token_expiry_time = None
+
+    # Inicie a função auto_refresh_token em uma thread separada
+    refresh_thread = threading.Thread(target=auto_refresh_token)
+    refresh_thread.daemon = True  
+    refresh_thread.start()
+
     main()
