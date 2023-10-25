@@ -4,3 +4,5 @@ sel.json
 pedidos/
 preparo/
 notas-fiscais/
+geckodriver.exe
+geckodriver.log

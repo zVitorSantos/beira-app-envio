@@ -236,13 +236,6 @@ def main():
         time.sleep(1)
         clear_console(console)
 
-    def open_envio():
-        os.environ["LAUNCHED_FROM_MAIN"] = "True"
-        subprocess.Popen(["python", "scripts/coleta.py"])
-        write_to_console(console, "\n  Abrindo importação de pedidos.")
-        time.sleep(3)
-        clear_last(console)
-
     def open_nfe():
         os.environ["LAUNCHED_FROM_MAIN"] = "True"
         subprocess.Popen(["python", "scripts/edit.py"])
@@ -262,6 +255,8 @@ def main():
     write_to_console(console, "Expiração:", newline=False, token_expiry_time=token_expiry_time)
     write_to_console(console, "==========================================")
 
+    subprocess.run(["python", "scripts/auto.py"])
+
     # Estilo para os botões usando CustomTkinter
     botao_estilo = {
         'width': 100,  # Largura em pixels
@@ -277,12 +272,10 @@ def main():
     buttons_frame.pack()
 
     # Botões para escolher entre Envio e Cadastro
-    btn_envio = tk.CTkButton(buttons_frame, text="Adicionar\nPedido", command=open_envio, **botao_estilo)
     btn_nfe = tk.CTkButton(buttons_frame, text="Editar\nNFE", command=open_nfe, **botao_estilo)
 
     # Usando grid para posicionar os botões lado a lado
-    btn_envio.grid(row=0, column=0, padx=10) 
-    btn_nfe.grid(row=0, column=2, padx=10)
+    btn_nfe.grid(row=0, column=1, padx=10)
 
     threading.Thread(target=update_time_remaining, args=(time_remaining_label, refresh_token, client_credentials_base64)).start()
 

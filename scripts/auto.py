@@ -1,23 +1,30 @@
+from selenium import webdriver
+from selenium.webdriver.common.keys import Keys
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.common.exceptions import NoSuchElementException
+from selenium.webdriver.common.action_chains import ActionChains
+from selenium.webdriver.common.by import By
+import requests
+import os
+import time
+import json
 from pdfminer.high_level import extract_text
 import subprocess
 import tabula
 import pandas as pd
 import re
-import os
-import requests
 import tkinter as tk
 from tkinter import messagebox
 import tkinter.messagebox as messagebox
-import json
 from tkinter import filedialog
-from datetime import datetime
+from datetime import datetime, timedelta
 
-if not os.environ.get("LAUNCHED_FROM_MAIN"):
-    print("Por favor, inicie o programa pelo launch.py")
-    exit()
+# if not os.environ.get("LAUNCHED_FROM_MAIN"):
+#     print("Por favor, inicie o programa pelo launch.py")
+#     exit()
 
-# Função para carregar o ACCESS_TOKEN
-def carregar_access_token():
+def carregar_acesso():
     try:
         with open("config.json", "r") as file:
             consolidated_data = json.load(file)
@@ -27,14 +34,16 @@ def carregar_access_token():
 
         selected_company = selected_company_data.get("sel", None)
         ACCESS_TOKEN = consolidated_data.get(selected_company, {}).get("tokens", {}).get("ACCESS_TOKEN", None)
-        return ACCESS_TOKEN, selected_company
+        beirario_data = consolidated_data.get(selected_company, {}).get("beirario", {})
+        
+        return ACCESS_TOKEN, selected_company, beirario_data
 
     except FileNotFoundError:
         print("Arquivo de configuração ou empresa selecionada não encontrado.")
-        return None, None
-
+        return None, None, None
+    
 def buscar_id_item(codigo_item, codigo_cor):
-    ACCESS_TOKEN, _ = carregar_access_token()
+    ACCESS_TOKEN, _, _ = carregar_acesso()
     if ACCESS_TOKEN is None:
         print("Token de acesso não encontrado.")
         return None
@@ -51,19 +60,10 @@ def buscar_id_item(codigo_item, codigo_cor):
         else:
             print(f"ID não encontrado para Código: {codigo_item}, Cor: {codigo_cor}")
     else:
+        print(response.text)
         print(f"Resposta da API inesperada. Código: {response.status_code}")
 
     return None
-
-def selecionar_pdf():
-    root = tk.Tk()
-    root.withdraw() 
-    # Abre a janela de seleção de arquivo
-    pdf_path = filedialog.askopenfilename(filetypes=[("PDF files", "*.pdf")])
-    if pdf_path:
-        extrair_dados(pdf_path)
-    else:
-        print("Nenhum arquivo selecionado.")
 
 def format_date(date_str):
     try:
@@ -74,7 +74,7 @@ def format_date(date_str):
         return None
     
 def post(numero_oc):
-    ACCESS_TOKEN, selected_company = carregar_access_token()
+    ACCESS_TOKEN, selected_company, _ = carregar_acesso()
     empresa_ids = {
         "Brilha Natal": {
             "vendedor_id": "15596262453",
@@ -107,7 +107,7 @@ def post(numero_oc):
     dados_coletados_infos_df = pd.read_excel(file_path, sheet_name='Infos')
 
     # Verifique se a pasta da empresa selecionada existe, caso contrário, crie-a
-    company_folder = os.path.join(f"pedidos/{selected_company}")
+    company_folder = os.path.join(f"pedidos/{selected_company}/{numero_oc}")
     print("pasta do pedido", company_folder)
     if not os.path.exists(company_folder):
         os.makedirs(company_folder)
@@ -179,12 +179,13 @@ def post(numero_oc):
         formatted_json = json.dumps(response.json(), indent=4, ensure_ascii=False).encode('utf8').decode()
         messagebox.showwarning("Erro!", f"{formatted_json}")
 
+    
 def extrair_dados(pdf_path):
     texto = extract_text(pdf_path)
     numero_oc = re.search(r'Número OC:\s*(\d+)', texto).group(1) if re.search(r'Número OC:\s*(\d+)', texto) else 'na'
     data_emissao = re.search(r'DATA DE EMISSÃO:\s*(\d{2}/\d{2}/\d{4})', texto)
     tabelas = tabula.read_pdf(pdf_path, pages='all', multiple_tables=True)
-    ACCESS_TOKEN, selected_company = carregar_access_token()
+    ACCESS_TOKEN, selected_company, _ = carregar_acesso()
 
     tabela_produtos = tabelas[0]
 
@@ -260,5 +261,151 @@ def extrair_dados(pdf_path):
 
     # Chama o post
     post(numero_oc=numero_oc)
-    
-selecionar_pdf()
+
+# Carregando os dados
+_, selected_company, beirario_data = carregar_acesso()
+
+# Verifica se conseguiu carregar os dados do Beirario
+if beirario_data:
+    usuario = beirario_data.get('usuario', None)
+    senha = beirario_data.get('senha', None)
+
+    if usuario and senha:
+        # Configure o driver do Firefox com a opção headless
+        options = webdriver.FirefoxOptions()
+        options.add_argument('-headless')
+        driver = webdriver.Firefox(options=options)
+
+        # Acesse o site
+        driver.get("https://brportal.beirario.com.br/brportal/acesso/login")
+
+        # Encontre o campo de usuário e insira o nome de usuário
+        campo_usuario = driver.find_element(By.NAME, "usuario")
+        campo_usuario.clear()
+        campo_usuario.send_keys(usuario)
+
+        # Encontre o campo de senha e insira a senha
+        campo_senha = driver.find_element(By.NAME, "senha")
+        campo_senha.clear()
+        campo_senha.send_keys(senha)
+
+        # Encontre o botão de login e clique nele
+        botao_entrar = driver.find_element(By.XPATH, '//button[@type="submit"]')
+        botao_entrar.click()
+
+        print("Login efetuado com sucesso!")
+
+        # Navegue até a URL após o login
+        driver.get('https://brportal.beirario.com.br/brportal/com/ArquivosOrdemCompraForm.jsp')
+
+        # Preencha o campo fil_filial com o valor 17
+        campo_filial = driver.find_element(By.NAME, 'fil_filial')
+        campo_filial.clear()
+        campo_filial.send_keys('17')
+
+        # Obtenha a data atual e calcule as datas inicial e final
+        data_atual = datetime.now()
+        data_inicial = (data_atual - timedelta(days=30)).strftime('%d%m%Y')
+        data_final = (data_atual + timedelta(days=14)).strftime('%d%m%Y')
+
+        action = ActionChains(driver)
+
+        # Para o campo de data inicial
+        campo_dt_inicial = driver.find_element(By.ID, 'dt_inicial')
+        action.move_to_element(campo_dt_inicial).click().send_keys(data_inicial).perform()
+
+        # Para o campo de data final
+        campo_dt_final = driver.find_element(By.ID, 'dt_final')
+        action.move_to_element(campo_dt_final).click().send_keys(data_final).perform()
+
+        botao_pesquisar = driver.find_element(By.NAME, 'select1_action')
+        botao_pesquisar.click()
+
+        print("Pedidos pesquisados!")
+
+        # Localize a tabela pelo seu ID
+        tabela = driver.find_element(By.ID, 'TRbl_report_Jw_consulta_titulos')
+
+        # Encontre todas as linhas da tabela
+        linhas = tabela.find_elements(By.TAG_NAME, 'tr')
+
+        # Guarde o identificador da janela original
+        main_window_handle = driver.current_window_handle
+
+        # Itere através das linhas da tabela
+        for linha in linhas:
+            try:
+                oco_numero_elemento = linha.find_element(By.XPATH, './/input[contains(@name, "oco_numero")]')
+                oco_numero = oco_numero_elemento.get_attribute('value')
+            except NoSuchElementException:
+                continue
+
+            # Caminho onde o arquivo seria salvo
+            arquivo_path = f"pedidos/{selected_company}/{oco_numero}/{oco_numero}.pdf"
+
+            # Verifica se o arquivo já existe
+            if os.path.exists(arquivo_path):
+                print(f"Arquivo para OC {oco_numero} já existe.")
+                continue
+
+            # Clique no botão "Remessa"
+            try:
+                remessa_button = linha.find_element(By.XPATH, './/input[@value="Remessa"]')
+                remessa_button.click()
+            except NoSuchElementException:
+                continue
+
+            # Espere até que a nova janela/aba seja aberta
+            wait = WebDriverWait(driver, 5)
+            wait.until(EC.number_of_windows_to_be(2))
+
+            # Alterne para a nova janela/aba
+            new_window_handle = [window for window in driver.window_handles if window != main_window_handle][0]
+            driver.switch_to.window(new_window_handle)
+
+            # Espere até que o elemento esteja presente
+            WebDriverWait(driver, 10).until(
+                EC.presence_of_element_located((By.XPATH, "//a[contains(@href, 'OrdemCompraRemessa')]"))
+            )
+
+            # Obtenha o link do PDF
+            try:
+                pdf_link_element = driver.find_element(By.XPATH, "//a[contains(@href, 'OrdemCompraRemessa')]")
+                pdf_link = pdf_link_element.get_attribute('href')
+                print(f"PDF Link: {pdf_link}")
+            except NoSuchElementException:
+                print("Elemento não encontrado.")
+                continue
+
+            # Baixar o arquivo PDF
+            response = requests.get(pdf_link)
+
+            # Verifique se a requisição foi bem-sucedida
+            if response.status_code == 200:
+                # Verifique se o diretório existe, senão, crie-o
+                diretorio = os.path.dirname(arquivo_path)
+                if not os.path.exists(diretorio):
+                    os.makedirs(diretorio)
+
+                # Escrever o conteúdo do PDF no arquivo
+                with open(arquivo_path, 'wb') as f:
+                    f.write(response.content)
+                print(f"Arquivo {oco_numero}.pdf salvo com sucesso!")
+                extrair_dados(arquivo_path)
+            else:
+                print(f"Não foi possível baixar o arquivo {oco_numero}.pdf")
+
+            print("Próximo Item")
+
+            # Feche a nova janela/aba e volte para a janela original
+            driver.close()
+            driver.switch_to.window(main_window_handle)
+
+        print("Acabaram todos!")
+
+        # Feche o navegador
+        driver.quit()
+    else:
+        print("Usuário ou senha não disponíveis.")
+else:
+    print("Dados do Beirario não encontrados.")
