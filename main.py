@@ -56,7 +56,7 @@ AUTH_URL = f"https://www.bling.com.br/Api/v3/oauth/authorize?response_type=code&
 
 BASE_URL = 'https://www.bling.com.br/Api/v3'
 
-VERIFY_URL = f'{BASE_URL}/contatos'
+VERIFY_URL = f'{BASE_URL}/produtos'
 
 TOKEN_URL = 'https://www.bling.com.br/Api/v3/oauth/token'
 
@@ -239,17 +239,16 @@ def main():
     def open_envio():
         os.environ["LAUNCHED_FROM_MAIN"] = "True"
         subprocess.Popen(["python", "scripts/coleta.py"])
-        write_to_console(console, "Abrindo importação de pedidos.")
+        write_to_console(console, "\n  Abrindo importação de pedidos.")
         time.sleep(3)
         clear_last(console)
 
-    def open_etiqueta():
+    def open_nfe():
         os.environ["LAUNCHED_FROM_MAIN"] = "True"
-        subprocess.Popen(["python", "scripts/etiqueta.py"])
-
-    def open_xml():
-        os.environ["LAUNCHED_FROM_MAIN"] = "True"
-        subprocess.Popen(["python", "scripts/emitir_xml.py"])
+        subprocess.Popen(["python", "scripts/edit.py"])
+        write_to_console(console, "\n  Abrindo edição de NF-e.")
+        time.sleep(3)
+        clear_last(console)
         
     def mask_token(token):
         return token[:13] + "*****"
@@ -279,13 +278,11 @@ def main():
 
     # Botões para escolher entre Envio e Cadastro
     btn_envio = tk.CTkButton(buttons_frame, text="Adicionar\nPedido", command=open_envio, **botao_estilo)
-    btn_etiqueta = tk.CTkButton(buttons_frame, text="Gerar\nEtiqueta", command=open_etiqueta, **botao_estilo)
-    btn_xml = tk.CTkButton(buttons_frame, text="Gerar\nXML", command=open_xml, **botao_estilo)
+    btn_nfe = tk.CTkButton(buttons_frame, text="Editar\nNFE", command=open_nfe, **botao_estilo)
 
     # Usando grid para posicionar os botões lado a lado
     btn_envio.grid(row=0, column=0, padx=10) 
-    btn_etiqueta.grid(row=0, column=2, padx=10)
-    btn_xml.grid(row=0, column=3, padx=10)
+    btn_nfe.grid(row=0, column=2, padx=10)
 
     threading.Thread(target=update_time_remaining, args=(time_remaining_label, refresh_token, client_credentials_base64)).start()
 
@@ -309,11 +306,11 @@ def update_access_token(new_access_token, new_refresh_token):
 # Ajustando as funções de verificação e atualização para receber os parâmetros
 def verify_access_token(access_token):
     response = requests.get(VERIFY_URL, headers={'Authorization': f'Bearer {access_token}'})
-    #print("Código de status da resposta:", response.status_code)
+    #print("Código de status da resposta:", response.text)
     #print("Token sendo verificado:", access_token)
     return response.status_code == 200
 
-def auto_refresh_token():
+def auto_refresh_token(root):
     global token_expiry_time
     while True:
         # Recarregue os dados mais recentes da empresa selecionada
@@ -349,9 +346,11 @@ def auto_refresh_token():
             if new_access_token:
                 # Atualize os tokens e o tempo de captura no arquivo JSON
                 update_tokens(new_access_token, new_refresh_token)
-
                 # Atualize a variável global
                 token_expiry_time = new_expiry_time
+
+                root.destroy()
+                subprocess.Popen(["python", "launch.py"])
 
         time.sleep(60)
 
@@ -389,8 +388,6 @@ def refresh_access_token(refresh_token, client_credentials_base64):
         # Atualizar token_expiry_time aqui
         global token_expiry_time
         token_expiry_time = datetime.now() + timedelta(seconds=EXPIRES_IN)
-
-        subprocess.Popen(["python", "launch.py"])
 
         return new_access_token, new_refresh_token, token_expiry_time
     

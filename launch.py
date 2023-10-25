@@ -38,7 +38,7 @@ root.title("")
 root.geometry("175x160")
 root.resizable(False, False)
 
-center_window(root, 175, 160)
+center_window(root, 175, 200)
 
 label = tk.CTkLabel(root, font=('Helvetica', 16, 'bold'), text="Selecione a empresa:")
 label.pack(pady=10)
@@ -49,11 +49,11 @@ warning_label.pack_forget()
 
 company_var = tk.StringVar(value="None")
 
-companies = ["Maggiore Modas", "Brilha Natal"]
+companies = ["Maggiore Modas","Maggiore Pecas", "Brilha Natal"]
 
 # Adicionar o comando toggle_button_state ao CTkRadioButton
 for company in companies:
-    tk.CTkRadioButton(root, font=('Helvetica', 14, 'bold'), border_color='#4d7cff', radiobutton_height=15, radiobutton_width=15, border_width_checked=4, text=company, variable=company_var, value=company, command=toggle_button_state).pack(pady=5)
+    tk.CTkRadioButton(root, font=('Helvetica', 14, 'bold'), border_color='white', radiobutton_height=15, radiobutton_width=15, border_width_checked=4, text=company, variable=company_var, value=company, command=toggle_button_state).pack(pady=5)
 
 # Botão inicialmente desabilitado
 button = tk.CTkButton(root, font=('Helvetica', 20, 'bold'), text_color_disabled='#808080', text_color='white',text="Confirmar", fg_color='black', border_width=2, border_color='#4d7cff', command=save_choice, state="disabled", width=34, height=23)
