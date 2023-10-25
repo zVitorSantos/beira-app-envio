@@ -1,4 +1,7 @@
 coleta.xlsx
 config.json
 sel.json
-etiquetas/
+pedidos/
+notas-fiscais/
+preparo/
+__pycache__/
